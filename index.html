@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Read Along</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: #fef9ef; color: #2b2b2b;
+    font-family: "Chalkboard SE", "Comic Sans MS", ui-rounded, system-ui, sans-serif;
+  }
+  section { display: none; min-height: 100vh; padding: 20px 16px 40px; max-width: 720px; margin: 0 auto; }
+  section.active { display: block; }
+  h1 { text-align: center; font-size: 32px; margin: 24px 0 8px; }
+  p.sub { text-align: center; color: #666; margin: 0 0 20px; }
+  .btn {
+    display: block; width: 100%; padding: 18px; margin: 12px 0; border: 0; border-radius: 18px;
+    background: #4f8cff; color: #fff; font: inherit; font-size: 20px; text-align: center; cursor: pointer;
+  }
+  .btn.alt { background: #fff; color: #4f8cff; border: 3px solid #4f8cff; }
+  .btn.green { background: #2fb457; }
+  .hiddenInput { position: absolute; opacity: 0; width: 0; height: 0; }
+  .bar { height: 14px; background: #e6e0d2; border-radius: 8px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: #4f8cff; transition: width .2s; }
+
+  /* crop */
+  #cropWrap { position: relative; margin: 0 auto 16px; overflow: hidden; border-radius: 8px; background: #000; touch-action: none; }
+  #cropCanvas { display: block; }
+  #cropBox {
+    position: absolute; border: 3px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+    touch-action: none; cursor: move;
+  }
+  .hd { position: absolute; width: 44px; height: 44px; touch-action: none; }
+  .hd::after {
+    content: ""; position: absolute; left: 13px; top: 13px; width: 18px; height: 18px;
+    background: #fde68a; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.5);
+  }
+  .hd[data-h="nw"] { left: -22px; top: -22px; }
+  .hd[data-h="ne"] { right: -22px; top: -22px; }
+  .hd[data-h="sw"] { left: -22px; bottom: -22px; }
+  .hd[data-h="se"] { right: -22px; bottom: -22px; }
+  .hd[data-h="n"] { left: 50%; margin-left: -22px; top: -22px; }
+  .hd[data-h="s"] { left: 50%; margin-left: -22px; bottom: -22px; }
+  .hd[data-h="w"] { top: 50%; margin-top: -22px; left: -22px; }
+  .hd[data-h="e"] { top: 50%; margin-top: -22px; right: -22px; }
+  #ocrStatus { margin-top: 16px; text-align: center; }
+
+  textarea {
+    width: 100%; min-height: 50vh; padding: 14px; font: inherit; font-size: 18px;
+    border: 2px solid #d9d2c0; border-radius: 14px; background: #fff;
+  }
+  .topbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; position: sticky; top: 0; background: #fef9ef; padding: 8px 0; z-index: 2; }
+  .topbar .bar { flex: 1; }
+  .mic { border: 0; border-radius: 14px; padding: 10px 14px; font: inherit; font-size: 16px; background: #2fb457; color: #fff; }
+  .mic.off { background: #999; }
+  .tb { border: 0; border-radius: 14px; padding: 10px 14px; font: inherit; font-size: 16px; background: #e6e0d2; }
+  #hint { text-align: center; color: #666; font-size: 15px; margin: 4px 0 12px; }
+  #story { font-size: 30px; line-height: 2.1; user-select: none; -webkit-user-select: none; }
+  #story p { margin: 0 0 20px; }
+  .w { padding: 2px 4px; border-radius: 10px; cursor: pointer; }
+  .w.correct { color: #1b8a3a; }
+  .w.cur { background: #fde68a; box-shadow: 0 0 0 3px #f59e0b; }
+  .w.try { animation: wiggle .4s; }
+  @keyframes wiggle { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  #doneEmoji { text-align: center; font-size: 80px; margin: 40px 0 10px; }
+</style>
+</head>
+<body>
+
+<!-- 1. CAPTURE -->
+<section id="s-capture" class="active">
+  <h1>📖 Read Along</h1>
+  <p class="sub">Take a picture of a short story, then read it out loud!</p>
+  <label class="btn" for="photoInput">📷 Take a photo of the story</label>
+  <input id="photoInput" class="hiddenInput" type="file" accept="image/*" capture="environment">
+  <label class="btn alt" for="libraryInput">🖼️ Choose a photo</label>
+  <input id="libraryInput" class="hiddenInput" type="file" accept="image/*">
+  <button class="btn alt" id="sampleBtn">✨ Try a sample story</button>
+</section>
+
+<!-- 2. CROP -->
+<section id="s-crop">
+  <h1>Crop the story</h1>
+  <p class="sub">Drag the corners so only the story is inside the box.</p>
+  <div id="cropWrap">
+    <canvas id="cropCanvas"></canvas>
+    <div id="cropBox">
+      <div class="hd" data-h="n"></div>
+      <div class="hd" data-h="s"></div>
+      <div class="hd" data-h="w"></div>
+      <div class="hd" data-h="e"></div>
+      <div class="hd" data-h="nw"></div>
+      <div class="hd" data-h="ne"></div>
+      <div class="hd" data-h="sw"></div>
+      <div class="hd" data-h="se"></div>
+    </div>
+  </div>
+  <div id="cropBtns">
+    <button class="btn green" id="cropBtn">✂️ Use this area</button>
+    <button class="btn alt" id="cropBackBtn">↩︎ Retake</button>
+  </div>
+  <div id="ocrStatus" hidden>
+    <div id="ocrText">Preparing…</div>
+    <div class="bar"><div id="ocrBar"></div></div>
+  </div>
+</section>
+
+<!-- 3. REVIEW -->
+<section id="s-review">
+  <h1>Check the words</h1>
+  <p class="sub">Fix any mistakes the camera made, then start!</p>
+  <textarea id="storyText" spellcheck="false"></textarea>
+  <button class="btn green" id="startBtn">▶️ Start reading</button>
+  <button class="btn alt" id="retakeBtn">↩︎ Back</button>
+</section>
+
+<!-- 4. READ -->
+<section id="s-read">
+  <div class="topbar">
+    <button class="mic" id="micBtn">🎤 Listening</button>
+    <div class="bar"><div id="readBar"></div></div>
+    <button class="tb" id="restartBtn">↺</button>
+    <button class="tb" id="exitBtn">✕</button>
+  </div>
+  <div id="hint"></div>
+  <div id="story"></div>
+</section>
+
+<!-- 5. DONE -->
+<section id="s-done">
+  <div id="doneEmoji">🎉</div>
+  <h1>Great reading!</h1>
+  <button class="btn green" id="againBtn">🔁 Read again</button>
+  <button class="btn alt" id="newBtn">📷 New story</button>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const screens = ['capture', 'crop', 'review', 'read', 'done'];
+function show(name) {
+  screens.forEach(s => $('s-' + s).classList.toggle('active', s === name));
+  window.scrollTo(0, 0);
+}
+
+/* ---------- PHOTO LOADING ---------- */
+function loadToCanvas(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 2600;
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * scale);
+      c.height = Math.round(img.naturalHeight * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Unable to load image')); };
+    img.src = url;
+  });
+}
+
+function enhance(c) {
+  const ctx = c.getContext('2d');
+  const d = ctx.getImageData(0, 0, c.width, c.height);
+  const px = d.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < px.length; i += 4) {
+    const g = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0;
+    px[i] = g; hist[g]++;
+  }
+  const total = c.width * c.height;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.02) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.02) { hi = v; break; } }
+  const range = Math.max(1, hi - lo);
+  for (let i = 0; i < px.length; i += 4) {
+    const g = Math.max(0, Math.min(255, ((px[i] - lo) * 255 / range) | 0));
+    px[i] = px[i + 1] = px[i + 2] = g;
+  }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+
+/* ---------- CROP SCREEN ---------- */
+let srcCanvas = null;
+let dispW = 0, dispH = 0;
+let crop = { x: 0, y: 0, w: 0, h: 0 };
+
+function layoutCropBox() {
+  const b = $('cropBox');
+  b.style.left = crop.x + 'px';
+  b.style.top = crop.y + 'px';
+  b.style.width = crop.w + 'px';
+  b.style.height = crop.h + 'px';
+}
+
+function showCrop(canvas) {
+  srcCanvas = canvas;
+  const availW = Math.min(window.innerWidth, 720) - 32;
+  const availH = window.innerHeight * 0.6;
+  const scale = Math.min(availW / canvas.width, availH / canvas.height);
+  dispW = Math.round(canvas.width * scale);
+  dispH = Math.round(canvas.height * scale);
+  const wrap = $('cropWrap');
+  wrap.style.width = dispW + 'px';
+  wrap.style.height = dispH + 'px';
+  const dc = $('cropCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  dc.width = Math.round(dispW * dpr);
+  dc.height = Math.round(dispH * dpr);
+  dc.style.width = dispW + 'px';
+  dc.style.height = dispH + 'px';
+  dc.getContext('2d').drawImage(canvas, 0, 0, dc.width, dc.height);
+  const mx = Math.round(dispW * 0.06), my = Math.round(dispH * 0.06);
+  crop = { x: mx, y: my, w: dispW - mx * 2, h: dispH - my * 2 };
+  layoutCropBox();
+  $('ocrStatus').hidden = true;
+  $('cropBtns').hidden = false;
+  show('crop');
+}
+
+(function setupCropDrag() {
+  const box = $('cropBox');
+  let drag = null;
+  const MIN = 48;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  box.addEventListener('pointerdown', e => {
+    const h = e.target.dataset.h || 'move';
+    drag = { h, sx: e.clientX, sy: e.clientY, o: { ...crop } };
+    box.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    const o = drag.o, h = drag.h;
+    if (h === 'move') {
+      crop.x = clamp(o.x + dx, 0, dispW - o.w);
+      crop.y = clamp(o.y + dy, 0, dispH - o.h);
+    } else {
+      let L = o.x, T = o.y, R = o.x + o.w, B = o.y + o.h;
+      if (h.includes('w')) L = clamp(L + dx, 0, R - MIN);
+      if (h.includes('e')) R = clamp(R + dx, L + MIN, dispW);
+      if (h.includes('n')) T = clamp(T + dy, 0, B - MIN);
+      if (h.includes('s')) B = clamp(B + dy, T + MIN, dispH);
+      crop = { x: L, y: T, w: R - L, h: B - T };
+    }
+    layoutCropBox();
+  });
+  const end = () => { drag = null; };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+})();
+
+function cleanOCR(t) {
+  return t.replace(/\r/g, '')
+    .replace(/-\n(?=[a-z])/g, '')
+    .replace(/([^\n])\n(?!\n)/g, '$1 ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function setProgress(p, label) {
+  $('ocrBar').style.width = Math.round(p * 100) + '%';
+  $('ocrText').textContent = label;
+}
+
+async function runOCR() {
+  if (!srcCanvas) return;
+  const scale = srcCanvas.width / dispW;
+  const sx = Math.round(crop.x * scale), sy = Math.round(crop.y * scale);
+  const sw = Math.max(1, Math.round(crop.w * scale)), sh = Math.max(1, Math.round(crop.h * scale));
+  const out = document.createElement('canvas');
+  out.width = sw; out.height = sh;
+  out.getContext('2d').drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  enhance(out);
+  $('cropBtns').hidden = true;
+  $('ocrStatus').hidden = false;
+  setProgress(0.03, 'Getting ready…');
+  try {
+    const { data } = await Tesseract.recognize(out, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') setProgress(m.progress, 'Reading the page…');
+        else setProgress(0.05, 'Getting ready…');
+      }
+    });
+    $('storyText').value = cleanOCR(data.text);
+    show('review');
+  } catch (err) {
+    alert('Could not read the photo: ' + err.message);
+    $('ocrStatus').hidden = true;
+    $('cropBtns').hidden = false;
+  }
+}
+
+async function handlePhoto(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    showCrop(await loadToCanvas(file));
+  } catch (err) {
+    alert('Could not open the photo: ' + err.message);
+  }
+}
+$('photoInput').addEventListener('change', handlePhoto);
+$('libraryInput').addEventListener('change', handlePhoto);
+$('cropBtn').onclick = runOCR;
+$('cropBackBtn').onclick = () => show('capture');
+
+$('sampleBtn').onclick = () => {
+  $('storyText').value =
+    'The little red fox ran up the big green hill. He saw a bird in a tall tree.\n\n' +
+    '"Hello, bird!" said the fox. "Can you fly with me?"\n\n' +
+    'The bird smiled and they flew away together.';
+  show('review');
+};
+$('retakeBtn').onclick = () => show('capture');
+
+/* ---------- WORD MATCHING HELPERS ---------- */
+const NUM = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ');
+const HOMO_GROUPS = [
+  ['to','too','two'],['their','there','theyre'],['for','four','fore'],['no','know'],['right','write'],
+  ['see','sea'],['be','bee'],['by','buy','bye'],['one','won'],['would','wood'],['hear','here'],
+  ['son','sun'],['red','read'],['blue','blew'],['i','eye'],['ate','eight'],['you','u'],
+  ['your','youre'],['whole','hole'],['tail','tale'],['wait','weight'],['where','wear','ware'],
+  ['which','witch'],['sail','sale'],['flower','flour'],['mail','male'],['meet','meat'],
+  ['night','knight'],['pair','pear','pare'],['plain','plane'],['road','rode'],['some','sum'],
+  ['steal','steel'],['weak','week'],['bear','bare'],['dear','deer'],['hi','high'],['knew','new'],
+  ['made','maid'],['peace','piece'],['rain','reign'],['threw','through'],['way','weigh']
+];
+const HOMO = {};
+HOMO_GROUPS.forEach(g => g.forEach(w => HOMO[w] = g[0]));
+const canon = s => HOMO[s] || s;
+const FILLER = new Set(['um', 'uh', 'hmm', 'mm', 'huh', 'ah', 'er', 'erm']);
+
+function normalize(w) {
+  let s = w.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]/g, '');
+  if (/^\d+$/.test(s) && +s <= 20) s = NUM[+s];
+  return s;
+}
+
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function similar(a, b) {
+  if (a === b || canon(a) === canon(b)) return true;
+  const n = Math.max(a.length, b.length);
+  const allow = n >= 9 ? 2 : n >= 5 ? 1 : 0;
+  return allow > 0 && lev(a, b) <= allow;
+}
+
+/* ---------- STORY STATE ---------- */
+let tokens = [];       // {text, norm, na, el, state, misses}
+let pos = 0;           // index of the word the child must say next
+let lastNorm = '';
+let finished = false;
+let lastScrolled = -1;
+let currentText = '';
+let missedTok = null;
+
+const HINT_TEXT = 'Read out loud. Tap any word to hear it. Tap 🎤 if listening stops.';
+
+function buildStory(text) {
+  currentText = text;
+  const box = $('story');
+  box.innerHTML = '';
+  tokens = [];
+  text.split(/\n{2,}/).forEach(par => {
+    par = par.replace(/[—–]/g, ' — ')
+             .replace(/([A-Za-z])-([A-Za-z])/g, '$1- $2')
+             .replace(/\s+/g, ' ').trim();
+    if (!par) return;
+    const p = document.createElement('p');
+    par.split(' ').forEach(w => {
+      const span = document.createElement('span');
+      span.className = 'w';
+      span.textContent = w;
+      const norm = normalize(w);
+      const t = { text: w, norm, na: !norm, el: span, state: 'pending', misses: 0 };
+      span.addEventListener('click', () => tapWord(t));
+      tokens.push(t);
+      p.appendChild(span);
+      p.appendChild(document.createTextNode(' '));
+    });
+    box.appendChild(p);
+  });
+}
+
+function nextIndex(i) {
+  while (i < tokens.length && tokens[i].na) i++;
+  return i;
+}
+
+function paint() {
+  tokens.forEach((t, i) => {
+    let cls = 'w';
+    if (t.state === 'correct') cls += ' correct';
+    if (i === pos) cls += ' cur';
+    t.el.className = cls;
+  });
+  const realTotal = tokens.filter(t => !t.na).length || 1;
+  const done = tokens.filter(t => !t.na && t.state === 'correct').length;
+  $('readBar').style.width = Math.round(100 * done / realTotal) + '%';
+  if (pos < tokens.length && pos !== lastScrolled) {
+    lastScrolled = pos;
+    tokens[pos].el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  if (pos >= tokens.length && !finished) {
+    finished = true;
+    setTimeout(finish, 700);
+  }
+}
+
+function wiggle(t) {
+  t.el.classList.remove('try');
+  void t.el.offsetWidth;
+  t.el.classList.add('try');
+}
+
+/* ---------- TAP TO HEAR ---------- */
+let speaking = false;
+let speakId = 0;
+
+function pickVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const v = speechSynthesis.getVoices();
+  return v.find(x => /Samantha|Ava|Allison|Susan/.test(x.name) && x.lang.startsWith('en')) ||
+         v.find(x => x.lang === 'en-US') || null;
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  const id = ++speakId;
+  speaking = true;
+  stopRec(false);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/[^A-Za-z0-9’'\- ]/g, ''));
+  u.lang = 'en-US'; u.rate = 0.7; u.pitch = 1.05;
+  const v = pickVoice();
+  if (v) u.voice = v;
+  let fin = false;
+  const done = () => {
+    if (fin || id !== speakId) return;
+    fin = true;
+    speaking = false;
+    if (listening) setTimeout(startRec, 300);
+  };
+  u.onend = done; u.onerror = done;
+  setTimeout(done, 4000);
+  speechSynthesis.speak(u);
+}
+
+function primeSpeech() {
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(' ');
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+
+function tapWord(t) {
+  if (t.na) return;
+  stopRec(true);
+  speak(t.text);
+  paint();
+}
+
+/* ---------- LISTENING ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, processed = 0, lastWords = [];
+
+function setMicUI() {
+  $('micBtn').textContent = listening ? '🎤 Listening' : '🎤 Paused';
+  $('micBtn').classList.toggle('off', !listening);
+}
+
+function startRec() {
+  if (!SR || !listening || speaking || rec) return;
+  rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  processed = 0;
+  lastWords = [];
+  rec.onresult = e => {
+    let txt = '';
+    for (let i = 0; i < e.results.length; i++) txt += ' ' + e.results[i][0].transcript;
+    const fin = e.results[e.results.length - 1].isFinal;
+    lastWords = txt.split(/\s+/).map(normalize).filter(Boolean);
+    handleSpoken(lastWords, fin);
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      listening = false;
+      setMicUI();
+      $('hint').textContent = 'Please allow the microphone and speech recognition (Settings → Safari, and turn on Siri & Dictation).';
+    }
+  };
+  rec.onend = () => {
+    rec = null;
+    handleSpoken(lastWords, true);
+    if (listening && !speaking) setTimeout(startRec, 250);
+  };
+  try { rec.start(); } catch (err) { rec = null; }
+}
+
+function stopRec(flush) {
+  if (!rec) return;
+  const r = rec;
+  rec = null;
+  r.onresult = r.onerror = r.onend = null;
+  if (flush) handleSpoken(lastWords, true);
+  try { r.abort(); } catch (e) {}
+}
+
+/* ---------- MATCHING: STAY ON THE WORD UNTIL IT'S CORRECT ---------- */
+function handleSpoken(words, final) {
+  const limit = final ? words.length : words.length - 1; // last interim word is unstable
+  for (let i = processed; i < limit; i++) {
+    if (pos >= tokens.length || speaking) break;
+    consume(words[i]);
+  }
+  processed = Math.max(processed, limit);
+  paint();
+  if (missedTok && missedTok === tokens[pos]) wiggle(missedTok);
+  missedTok = null;
+}
+
+function consume(w) {
+  if (FILLER.has(w)) return;
+  const t = tokens[pos];
+  if (!t) return;
+  if (similar(w, t.norm)) {
+    t.state = 'correct';
+    t.misses = 0;
+    lastNorm = t.norm;
+    pos = nextIndex(pos + 1);
+    return;
+  }
+  if (lastNorm && similar(w, lastNorm)) return; // child repeated the previous word
+  t.misses++;
+  missedTok = t;
+  if (t.misses >= 3) { // say the word for them, then keep waiting for them to say it
+    t.misses = 0;
+    speak(t.text);
+  }
+}
+
+function startReading(text) {
+  buildStory(text);
+  if (!tokens.some(t => !t.na)) { alert('There are no words to read yet.'); return false; }
+  pos = nextIndex(0);
+  lastNorm = '';
+  finished = false;
+  lastScrolled = -1;
+  missedTok = null;
+  show('read');
+  primeSpeech();
+  listening = !!SR;
+  $('hint').textContent = SR ? HINT_TEXT : 'Listening isn’t supported in this browser, but you can still tap words to hear them. Try Safari on iPhone/iPad.';
+  setMicUI();
+  paint();
+  startRec();
+  return true;
+}
+
+$('startBtn').onclick = () => {
+  const text = $('storyText').value.trim();
+  if (text) startReading(text);
+};
+
+$('micBtn').onclick = () => {
+  if (!SR) return;
+  listening = !listening;
+  setMicUI();
+  if (listening) startRec(); else stopRec(true);
+};
+
+$('restartBtn').onclick = () => { stopAll(); startReading(currentText); };
+$('exitBtn').onclick = () => { stopAll(); show('capture'); };
+
+function stopAll() {
+  listening = false;
+  stopRec(false);
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  speaking = false;
+}
+
+function finish() {
+  stopAll();
+  show('done');
+}
+
+$('againBtn').onclick = () => startReading(currentText);
+$('newBtn').onclick = () => show('capture');
+
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => pickVoice();
+</script>
+</body>
+</html>
