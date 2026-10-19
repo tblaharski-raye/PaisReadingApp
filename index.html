@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Read Along</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: #fef9ef; color: #2b2b2b;
+    font-family: "Chalkboard SE", "Comic Sans MS", ui-rounded, system-ui, sans-serif;
+  }
+  section { display: none; min-height: 100vh; padding: 20px 16px 40px; max-width: 720px; margin: 0 auto; }
+  section.active { display: block; }
+  h1 { text-align: center; font-size: 32px; margin: 24px 0 8px; }
+  p.sub { text-align: center; color: #666; margin: 0 0 20px; }
+  .btn {
+    display: block; width: 100%; padding: 18px; margin: 12px 0; border: 0; border-radius: 18px;
+    background: #4f8cff; color: #fff; font: inherit; font-size: 20px; text-align: center; cursor: pointer;
+  }
+  .btn.alt { background: #fff; color: #4f8cff; border: 3px solid #4f8cff; }
+  .btn.green { background: #2fb457; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .hiddenInput { position: absolute; opacity: 0; width: 0; height: 0; }
+  .bar { height: 14px; background: #e6e0d2; border-radius: 8px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: #4f8cff; transition: width .2s; }
+
+  /* crop */
+  #cropWrap { position: relative; margin: 0 auto 16px; overflow: hidden; border-radius: 8px; background: #000; touch-action: none; }
+  #cropCanvas { display: block; }
+  #cropBox {
+    position: absolute; border: 3px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+    touch-action: none; cursor: move;
+  }
+  .hd { position: absolute; width: 44px; height: 44px; touch-action: none; }
+  .hd::after {
+    content: ""; position: absolute; left: 13px; top: 13px; width: 18px; height: 18px;
+    background: #fde68a; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,.5);
+  }
+  .hd[data-h="nw"] { left: -22px; top: -22px; }
+  .hd[data-h="ne"] { right: -22px; top: -22px; }
+  .hd[data-h="sw"] { left: -22px; bottom: -22px; }
+  .hd[data-h="se"] { right: -22px; bottom: -22px; }
+  .hd[data-h="n"] { left: 50%; margin-left: -22px; top: -22px; }
+  .hd[data-h="s"] { left: 50%; margin-left: -22px; bottom: -22px; }
+  .hd[data-h="w"] { top: 50%; margin-top: -22px; left: -22px; }
+  .hd[data-h="e"] { top: 50%; margin-top: -22px; right: -22px; }
+  #ocrStatus { margin-top: 16px; text-align: center; }
+
+  textarea {
+    width: 100%; min-height: 50vh; padding: 14px; font: inherit; font-size: 18px;
+    border: 2px solid #d9d2c0; border-radius: 14px; background: #fff;
+  }
+
+  /* bookshelf + chapters */
+  .switch { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 8px 0 4px; font-size: 18px; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .slider { position: relative; flex: none; width: 56px; height: 32px; background: #bbbbbb; border-radius: 16px; transition: background .2s; }
+  .slider::after {
+    content: ""; position: absolute; left: 3px; top: 3px; width: 26px; height: 26px;
+    background: #fff; border-radius: 50%; transition: transform .2s;
+  }
+  .switch input:checked + .slider { background: #2fb457; }
+  .switch input:checked + .slider::after { transform: translateX(24px); }
+  #continueBtn small { display: block; font-size: 15px; margin-top: 4px; opacity: .9; }
+  .chap {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    width: 100%; padding: 14px 16px; margin: 8px 0; border: 2px solid #d9d2c0; border-radius: 14px;
+    background: #fff; color: #2b2b2b; font: inherit; font-size: 18px; text-align: left; cursor: pointer;
+  }
+  .chap:disabled { color: #aaaaaa; background: #f3efe6; cursor: default; }
+  .chap .here { font-size: 14px; color: #b45309; white-space: nowrap; }
+  #bookMsg { text-align: center; color: #666; }
+
+  .topbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; position: sticky; top: 0; background: #fef9ef; padding: 8px 0; z-index: 2; }
+  .topbar .bar { flex: 1; }
+  .mic { border: 0; border-radius: 14px; padding: 10px 14px; font: inherit; font-size: 16px; background: #2fb457; color: #fff; }
+  .mic.off { background: #999; }
+  .tb { border: 0; border-radius: 14px; padding: 10px 14px; font: inherit; font-size: 16px; background: #e6e0d2; }
+  #pageInfo { text-align: center; color: #666; font-size: 15px; margin: 0 0 8px; }
+  #hint { text-align: center; color: #666; font-size: 15px; margin: 4px 0 12px; }
+  #story { font-size: 30px; line-height: 2.1; user-select: none; -webkit-user-select: none; }
+  #story p { margin: 0 0 20px; }
+  #pageNav { display: flex; gap: 12px; margin-top: 8px; }
+  #pageNav .btn { margin: 0; }
+  .w { padding: 2px 4px; border-radius: 10px; cursor: pointer; }
+  .w.correct { color: #1b8a3a; }
+  .w.skipped { color: #9a9a9a; }
+  .w.cur { background: #fde68a; box-shadow: 0 0 0 3px #f59e0b; }
+  .w.try { animation: wiggle .4s; }
+  @keyframes wiggle { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  #doneEmoji { text-align: center; font-size: 80px; margin: 40px 0 10px; }
+</style>
+</head>
+<body>
+
+<!-- 1. CAPTURE -->
+<section id="s-capture" class="active">
+  <h1>📖 Read Along</h1>
+  <p class="sub">Take a picture of a short story, then read it out loud!</p>
+  <label class="btn" for="photoInput">📷 Take a photo of the story</label>
+  <input id="photoInput" class="hiddenInput" type="file" accept="image/*" capture="environment">
+  <label class="btn alt" for="libraryInput">🖼️ Choose a photo</label>
+  <input id="libraryInput" class="hiddenInput" type="file" accept="image/*">
+  <button class="btn alt" id="sampleBtn">🎲 Random story</button>
+  <button class="btn alt" id="shelfBtn">📚 Books</button>
+</section>
+
+<!-- BOOKSHELF -->
+<section id="s-shelf">
+  <h1>📚 Books</h1>
+  <p class="sub">Pick a book to read.</p>
+  <div id="shelfList"></div>
+  <button class="btn alt" id="shelfBackBtn">↩︎ Back</button>
+</section>
+
+<!-- CHAPTERS -->
+<section id="s-chapters">
+  <h1 id="chTitle"></h1>
+  <label class="switch">
+    <input type="checkbox" id="raToggle">
+    <span class="slider"></span>
+    <span id="raLabel">Read Along: On</span>
+  </label>
+  <button class="btn green" id="continueBtn" hidden></button>
+  <div id="bookMsg" hidden></div>
+  <div id="chList"></div>
+  <button class="btn alt" id="chBackBtn">↩︎ Books</button>
+</section>
+
+<!-- 2. CROP -->
+<section id="s-crop">
+  <h1>Crop the story</h1>
+  <p class="sub">Drag the corners so only the story is inside the box.</p>
+  <div id="cropWrap">
+    <canvas id="cropCanvas"></canvas>
+    <div id="cropBox">
+      <div class="hd" data-h="n"></div>
+      <div class="hd" data-h="s"></div>
+      <div class="hd" data-h="w"></div>
+      <div class="hd" data-h="e"></div>
+      <div class="hd" data-h="nw"></div>
+      <div class="hd" data-h="ne"></div>
+      <div class="hd" data-h="sw"></div>
+      <div class="hd" data-h="se"></div>
+    </div>
+  </div>
+  <div id="cropBtns">
+    <button class="btn green" id="cropBtn">✂️ Use this area</button>
+    <button class="btn alt" id="cropBackBtn">↩︎ Retake</button>
+  </div>
+  <div id="ocrStatus" hidden>
+    <div id="ocrText">Preparing…</div>
+    <div class="bar"><div id="ocrBar"></div></div>
+  </div>
+</section>
+
+<!-- 3. REVIEW -->
+<section id="s-review">
+  <h1>Check the words</h1>
+  <p class="sub">Fix any mistakes the camera made, then start!</p>
+  <textarea id="storyText" spellcheck="false"></textarea>
+  <button class="btn green" id="startBtn">▶️ Start reading</button>
+  <button class="btn alt" id="retakeBtn">↩︎ Back</button>
+</section>
+
+<!-- 4. READ -->
+<section id="s-read">
+  <div class="topbar">
+    <button class="mic" id="micBtn">🎤 Listening</button>
+    <div class="bar"><div id="readBar"></div></div>
+    <button class="tb" id="skipBtn">Skip ⏭</button>
+    <button class="tb" id="restartBtn">↺</button>
+    <button class="tb" id="exitBtn">✕</button>
+  </div>
+  <div id="pageInfo" hidden></div>
+  <div id="hint"></div>
+  <div id="story"></div>
+  <div id="pageNav" hidden>
+    <button class="btn alt" id="prevBtn">◀ Back</button>
+    <button class="btn" id="nextBtn">Next ▶</button>
+  </div>
+</section>
+
+<!-- 5. DONE -->
+<section id="s-done">
+  <div id="doneEmoji">🎉</div>
+  <h1 id="doneTitle">Great reading!</h1>
+  <button class="btn green" id="againBtn">🔁 Read again</button>
+  <button class="btn alt" id="newBtn">📷 New story</button>
+  <button class="btn green" id="nextChBtn" hidden></button>
+  <button class="btn alt" id="chaptersBtn" hidden>📚 Chapters</button>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+/* ---------- SETTINGS ---------- */
+const SUPABASE_URL = 'https://vtnxjheizurqardgreeq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0bnhqaGVpenVycWFyZGdyZWVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNzA2MTIsImV4cCI6MjA5MzY0NjYxMn0.0tEGcXoVMZme75ryvYUjBg37r_9rsV0lLmULqm7c32w';
+
+// Bookshelf: add a line here and upload the .md file next to this page to add a book.
+// chapters = how many chapters the finished book will have (unwritten ones show "Coming soon").
+const BOOKS = [
+  { id: 'infinity-kids', title: 'The Infinity Kids', emoji: '🦸', file: 'infinity-kids.md', chapters: 20 }
+];
+const PAGE_WORDS = 200;
+
+const $ = id => document.getElementById(id);
+const screens = ['capture', 'shelf', 'chapters', 'crop', 'review', 'read', 'done'];
+function show(name) {
+  screens.forEach(s => $('s-' + s).classList.toggle('active', s === name));
+  window.scrollTo(0, 0);
+}
+
+/* ---------- PHOTO LOADING ---------- */
+function loadToCanvas(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 2600;
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * scale);
+      c.height = Math.round(img.naturalHeight * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Unable to load image')); };
+    img.src = url;
+  });
+}
+
+function enhance(c) {
+  const ctx = c.getContext('2d');
+  const d = ctx.getImageData(0, 0, c.width, c.height);
+  const px = d.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < px.length; i += 4) {
+    const g = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0;
+    px[i] = g; hist[g]++;
+  }
+  const total = c.width * c.height;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.02) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.02) { hi = v; break; } }
+  const range = Math.max(1, hi - lo);
+  for (let i = 0; i < px.length; i += 4) {
+    const g = Math.max(0, Math.min(255, ((px[i] - lo) * 255 / range) | 0));
+    px[i] = px[i + 1] = px[i + 2] = g;
+  }
+  ctx.putImageData(d, 0, 0);
+  return c;
+}
+
+/* ---------- CROP SCREEN ---------- */
+let srcCanvas = null;
+let dispW = 0, dispH = 0;
+let crop = { x: 0, y: 0, w: 0, h: 0 };
+
+function layoutCropBox() {
+  const b = $('cropBox');
+  b.style.left = crop.x + 'px';
+  b.style.top = crop.y + 'px';
+  b.style.width = crop.w + 'px';
+  b.style.height = crop.h + 'px';
+}
+
+function showCrop(canvas) {
+  srcCanvas = canvas;
+  const availW = Math.min(window.innerWidth, 720) - 32;
+  const availH = window.innerHeight * 0.6;
+  const scale = Math.min(availW / canvas.width, availH / canvas.height);
+  dispW = Math.round(canvas.width * scale);
+  dispH = Math.round(canvas.height * scale);
+  const wrap = $('cropWrap');
+  wrap.style.width = dispW + 'px';
+  wrap.style.height = dispH + 'px';
+  const dc = $('cropCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  dc.width = Math.round(dispW * dpr);
+  dc.height = Math.round(dispH * dpr);
+  dc.style.width = dispW + 'px';
+  dc.style.height = dispH + 'px';
+  dc.getContext('2d').drawImage(canvas, 0, 0, dc.width, dc.height);
+  const mx = Math.round(dispW * 0.06), my = Math.round(dispH * 0.06);
+  crop = { x: mx, y: my, w: dispW - mx * 2, h: dispH - my * 2 };
+  layoutCropBox();
+  $('ocrStatus').hidden = true;
+  $('cropBtns').hidden = false;
+  show('crop');
+}
+
+(function setupCropDrag() {
+  const box = $('cropBox');
+  let drag = null;
+  const MIN = 48;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  box.addEventListener('pointerdown', e => {
+    const h = e.target.dataset.h || 'move';
+    drag = { h, sx: e.clientX, sy: e.clientY, o: { ...crop } };
+    box.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    const o = drag.o, h = drag.h;
+    if (h === 'move') {
+      crop.x = clamp(o.x + dx, 0, dispW - o.w);
+      crop.y = clamp(o.y + dy, 0, dispH - o.h);
+    } else {
+      let L = o.x, T = o.y, R = o.x + o.w, B = o.y + o.h;
+      if (h.includes('w')) L = clamp(L + dx, 0, R - MIN);
+      if (h.includes('e')) R = clamp(R + dx, L + MIN, dispW);
+      if (h.includes('n')) T = clamp(T + dy, 0, B - MIN);
+      if (h.includes('s')) B = clamp(B + dy, T + MIN, dispH);
+      crop = { x: L, y: T, w: R - L, h: B - T };
+    }
+    layoutCropBox();
+  });
+  const end = () => { drag = null; };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+})();
+
+function cleanOCR(t) {
+  return t.replace(/\r/g, '')
+    .replace(/-\n(?=[a-z])/g, '')
+    .replace(/([^\n])\n(?!\n)/g, '$1 ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function setProgress(p, label) {
+  $('ocrBar').style.width = Math.round(p * 100) + '%';
+  $('ocrText').textContent = label;
+}
+
+async function runOCR() {
+  if (!srcCanvas) return;
+  const scale = srcCanvas.width / dispW;
+  const sx = Math.round(crop.x * scale), sy = Math.round(crop.y * scale);
+  const sw = Math.max(1, Math.round(crop.w * scale)), sh = Math.max(1, Math.round(crop.h * scale));
+  const out = document.createElement('canvas');
+  out.width = sw; out.height = sh;
+  out.getContext('2d').drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  enhance(out);
+  $('cropBtns').hidden = true;
+  $('ocrStatus').hidden = false;
+  setProgress(0.03, 'Getting ready…');
+  try {
+    const { data } = await Tesseract.recognize(out, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') setProgress(m.progress, 'Reading the page…');
+        else setProgress(0.05, 'Getting ready…');
+      }
+    });
+    $('storyText').value = cleanOCR(data.text);
+    show('review');
+  } catch (err) {
+    alert('Could not read the photo: ' + err.message);
+    $('ocrStatus').hidden = true;
+    $('cropBtns').hidden = false;
+  }
+}
+
+async function handlePhoto(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    showCrop(await loadToCanvas(file));
+  } catch (err) {
+    alert('Could not open the photo: ' + err.message);
+  }
+}
+$('photoInput').addEventListener('change', handlePhoto);
+$('libraryInput').addEventListener('change', handlePhoto);
+$('cropBtn').onclick = runOCR;
+$('cropBackBtn').onclick = () => show('capture');
+
+const STORIES = [
+  [
+    'A little gray kitten sat by the door. She was lost and she was sad. The rain came down and her fur got wet.',
+    'A girl named Mia saw the kitten. "Do not cry," said Mia. "I will help you." She picked up the kitten and held her close.',
+    'Mia put up a sign on the tree. It said, "Lost kitten. Please come get her." Mia gave the kitten some milk and a warm bed.',
+    'The next day, a boy ran up the street. "That is my kitten!" he said with a big smile. The kitten jumped into his arms and began to purr.'
+  ],
+  [
+    'Ben woke up and the sky was dark. Rain went tap, tap, tap on the window. "No park today," said Ben with a sigh.',
+    'Then Ben had a big idea. He put on his red boots and his yellow coat. He grabbed his umbrella and ran outside.',
+    'Ben jumped in every puddle he could find. Splash! Splash! Splash! A frog hopped up and jumped in a puddle too.',
+    'Ben laughed and laughed. He went home wet and happy. "I love rainy days," he said.'
+  ],
+  [
+    'Max was a little brown dog. He liked to run and he liked to jump. But most of all, Max wanted to fly.',
+    'Max watched the birds in the sky. "I can fly too," he said. He ran up the hill as fast as he could and jumped off a rock. Plop! He landed in the grass.',
+    'A wise old owl looked down from a tree. "Dogs do not fly," she said. "But dogs can do many things birds cannot."',
+    'Max thought about it. Birds cannot dig big holes. Birds cannot fetch a stick. Max wagged his tail and ran off to play. He was happy to be a dog.'
+  ],
+  [
+    'Sam and his mom went to the beach. The sun was hot and the sand was warm. Sam took off his shoes and ran to the water.',
+    'He found a shell that was pink and white. He found a crab that went sideways. "Look, Mom!" said Sam. "The sea is full of surprises."',
+    'Sam and his mom made a big sand castle. It had a tall tower and a deep ditch. A wave came up and splashed the castle.',
+    'The castle fell down, but Sam did not mind. "Let us make a new one," he said. And they did.'
+  ],
+  [
+    'One night, a little star fell out of the sky. It landed in a quiet field. The star was scared because it was far from home.',
+    'A firefly saw the star and flew down to it. "Why are you so sad?" asked the firefly. "I cannot get back up to the sky," said the star.',
+    'The firefly called all of his friends. Hundreds of fireflies came and lit up the field. They flew up in a line, higher and higher.',
+    'The star climbed up on the line of lights. Soon it was back in the sky, shining bright. Every night after that, the star winked at the fireflies below.'
+  ],
+  [
+    'Mia had a small garden behind her house. She planted seeds in the dirt and gave them water. Every day she looked to see if they had grown.',
+    'For many days, nothing happened. Mia felt sad. Her dad said, "Be patient. Good things take time."',
+    'Then one morning, Mia saw a tiny green sprout. The next day there were two. Soon her garden was full of green leaves.',
+    'By the end of summer, Mia had red tomatoes and orange carrots. She picked them and ate them with her family. They were the best she had ever tasted.'
+  ],
+  [
+    'Bear was very sleepy. Winter was coming and it was time for his long nap. He found a warm cave and made a soft bed of leaves.',
+    'But Bear could not sleep. He heard a noise. Scratch, scratch, scratch. He looked around and saw a little mouse in the corner.',
+    '"May I stay here too?" asked the mouse. "It is cold outside." Bear smiled. "Yes, you may," he said. "But please be quiet."',
+    'The mouse curled up next to Bear. It was warm and cozy. Soon they were both fast asleep, and they slept all winter long.'
+  ],
+  [
+    'Tom had a red kite. It was his favorite thing in the whole world. One windy day, he took it to the big field.',
+    'Tom let the string go and the kite rose up into the sky. It went up, up, up. It danced in the wind and the tail went swish, swish, swish.',
+    'Then a big gust of wind came. The string slipped out of Tom\'s hand! The kite flew away over the trees. Tom ran after it, but it was too fast.',
+    'Tom felt sad, but he went home. The next day, his neighbor knocked on the door. She had the red kite! It had landed in her yard, safe and sound.'
+  ],
+  [
+    'It was a sunny day, so Dad and the kids went for a picnic. They packed a big basket with sandwiches, grapes, and cookies. They found a nice spot under a tree.',
+    'Dad put out the blanket. The kids put out the food. But when Dad opened the basket, he got a surprise. There was a tiny frog inside!',
+    'The frog jumped out and hopped across the blanket. The kids laughed and chased after it. It hopped into the grass and was gone.',
+    '"I guess the frog wanted a picnic too," said Dad. The kids ate their lunch and thought about the frog all day.'
+  ],
+  [
+    'Tilly was a small turtle who lived by a pond. All the other animals were bigger and faster. Tilly always felt a little bit scared.',
+    'One day, a baby duck got stuck in the mud. Nobody could reach her. The big animals were too heavy and they would sink.',
+    'Tilly was small and light. She walked slowly across the mud. Step by step, she got closer to the duck. "I am here," she said. "Hold on to my shell."',
+    'Tilly pulled the little duck out of the mud. All the animals cheered. "You are very brave," they said. Tilly smiled. She did not feel so small anymore.'
+  ],
+  [
+    'It snowed all night long. In the morning, Lily looked out the window and saw white snow everywhere. "Let us build a snowman!" she said.',
+    'Lily and her brother rolled three big balls of snow. They put the biggest ball on the bottom and the smallest on top. They used two stones for eyes and a carrot for a nose.',
+    'Lily put her red scarf around the snowman. Her brother put his old hat on his head. "He looks so happy," said Lily. They named him Frosty.',
+    'The next day, the sun came out and the snow began to melt. By night, only the scarf and the hat were left. Lily was not sad. "We can build him again next winter," she said.'
+  ],
+  [
+    'On Saturday, Jack went to Grandma\'s house. She was in the kitchen and the whole house smelled sweet. "I am making cookies," said Grandma. "Would you like to help?"',
+    'Jack washed his hands and put on an apron. He stirred the dough with a big wooden spoon. Grandma added the chocolate chips, and Jack counted them: one, two, three, four, five.',
+    'They put the cookies in the oven. Jack waited and waited. At last the timer went ding! The cookies were gold and soft and warm.',
+    'Jack ate one cookie, then another one. He saved three for his dad and two for his mom. "Thank you, Grandma," he said. "These are the best cookies ever."'
+  ],
+  [
+    'There was once a small robot named Bolt. He lived in a big box on a shelf. Bolt could beep and he could blink, but he had no friends.',
+    'One day, a girl named Zoe opened the box. "Hello, little robot," she said. Bolt blinked his lights and said, "Beep, beep!" Zoe laughed and picked him up.',
+    'Zoe took Bolt to the park. They went down the slide and up on the swings. Bolt was not very good at swinging, but he did not mind.',
+    'At the end of the day, Zoe put Bolt on her bed. "Good night, Bolt," she said. Bolt beeped softly. He did not have an empty box anymore. He had a friend.'
+  ],
+  [
+    'Mr. Green had a class pet named Pip. Pip was a small gray hamster with big black eyes. He lived in a cage by the window.',
+    'Every day, the children took turns to feed Pip. Today it was Noah\'s turn. He gave Pip some seeds and fresh water. Pip stuffed the seeds in his cheeks.',
+    'But when Noah turned around, the cage door was open! Pip was gone. The children looked under the desk. They looked in the closet.',
+    'Then Noah heard a tiny squeak. Pip was asleep in Mr. Green\'s hat! Noah picked him up and put him back in the cage. This time, he closed the door tight.'
+  ],
+  [
+    'A small blue boat sat at the dock. All the big ships sailed far away, but the little boat just rocked on the water. "I wish I could go to the sea," she said.',
+    'One morning, the sun was bright and the wind was soft. A kind old man climbed into the boat. He pushed off from the dock and set the sail.',
+    'The little boat glided across the water. She saw fish jump and gulls fly. She saw the big ships far away, and now she was out there with them.',
+    'When the sun went down, the man steered her back to the dock. The little boat was tired but happy. "I am not so little after all," she said.'
+  ],
+  [
+    'A cat sat on a mat. He wore a big red hat. He sat and sat, and that was that.',
+    'A rat ran up to see the cat. "I like your hat," said the rat. "May I sit down on your mat?" "Yes, you can," said the cat.',
+    'They sat and had a chat. They ate a snack on the mat. The rat gave the cat a pat on the back.',
+    'The sun went down and the sky turned gray. The rat went home at the end of the day. The cat took a nap with his hat on his head, and dreamed of his friend as he lay in his bed.'
+  ],
+  [
+    'A little green frog sat on a log. The log sat in a bog. The bog was full of fog.',
+    'A dog came by with a big, loud bark. "Who is there?" he said in the dark. The frog said, "It is me. Please do not fear. I am just a frog, and I live right here."',
+    'The dog sat down on the log with the frog. They watched the moon rise over the bog. The fog went away and the sky turned bright. They sat on the log all through the night.',
+    'In the morning, the dog said, "I must go." The frog said, "Come back, and now you know, you have a friend who lives on a log, a friend who is a little green frog."'
+  ],
+  [
+    'A little bug sat on a rug. The rug was warm and snug. He gave a happy shrug and said, "I love my rug."',
+    'A big black fly flew in from the sky. "May I sit too?" asked the fly. "Yes, you may," the bug said with a smile. "Sit down and stay here a while."',
+    'The bug and the fly sat there all day. They sang and they danced and they started to play. They rolled on the rug and gave each other a hug.',
+    'When the sun went down, they felt sleepy and slow. The moon came up with a soft, warm glow. The bug and the fly said, "Good night, my friend," and they slept on the rug until the day would end.'
+  ],
+  [
+    'A little bee flew up a tree. She said, "Oh, look at me! I can fly so high, up in the sky, and I can see the sea!"',
+    'The day was warm and bright and sunny. The bee was out to find some honey. She buzzed by flowers, red and blue, and sipped the sweet, sweet morning dew.',
+    'She flew back home to the hive in the tree. "Look what I found!" she said with glee. Her friends all came to taste and to see. "It is the best," they said, "for you and for me!"',
+    'They ate until their tummies were round. They did not make a single sound. Then they all said, "Hip, hip, hooray for the bee, the brave little bee, who flew up the tree!"'
+  ],
+  [
+    'A little fox found a box. In the box were some socks. The socks were red and blue, and one pair was new.',
+    'He put on the socks and began to hop. He hopped to the shop and did not stop. He hopped past a hen and a pig in a pen, and he hopped and he hopped again.',
+    'The hen said, "Fox, what a nice pair of socks!" The pig said, "Where did you find that box?" The fox said, "Under the tree, just there. Go and look, if you care!"',
+    'So the hen and the pig ran off to the tree. They found two more boxes, one, two, and three. Now the fox, the hen, and the pig all hop, and they hop, and they hop, and they never stop.'
+  ]
+];
+let lastStory = -1;
+
+$('sampleBtn').onclick = () => {
+  let i;
+  do { i = Math.floor(Math.random() * STORIES.length); } while (i === lastStory && STORIES.length > 1);
+  lastStory = i;
+  $('storyText').value = STORIES[i].join('\n\n');
+  show('review');
+};
+$('retakeBtn').onclick = () => show('capture');
+
+/* ---------- WORD MATCHING HELPERS ---------- */
+const NUM = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ');
+const HOMO_GROUPS = [
+  ['to','too','two'],['their','there','theyre'],['for','four','fore'],['no','know'],['right','write'],
+  ['see','sea'],['be','bee'],['by','buy','bye'],['one','won'],['would','wood'],['hear','here'],
+  ['son','sun'],['red','read'],['blue','blew'],['i','eye'],['ate','eight'],['you','u'],
+  ['your','youre'],['whole','hole'],['tail','tale'],['wait','weight'],['where','wear','ware'],
+  ['which','witch'],['sail','sale'],['flower','flour'],['mail','male'],['meet','meat'],
+  ['night','knight'],['pair','pear','pare'],['plain','plane'],['road','rode'],['some','sum'],
+  ['steal','steel'],['weak','week'],['bear','bare'],['dear','deer'],['hi','high'],['knew','new'],
+  ['made','maid'],['peace','piece'],['rain','reign'],['threw','through'],['way','weigh']
+];
+const HOMO = {};
+HOMO_GROUPS.forEach(g => g.forEach(w => HOMO[w] = g[0]));
+const canon = s => HOMO[s] || s;
+const FILLER = new Set(['um', 'uh', 'hmm', 'mm', 'huh', 'ah', 'er', 'erm']);
+
+function normalize(w) {
+  let s = w.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]/g, '');
+  if (/^\d+$/.test(s) && +s <= 20) s = NUM[+s];
+  return s;
+}
+
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function soundKey(s) {
+  return s.replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/^kn/, 'n')
+          .replace(/^wr/, 'r').replace(/ght/g, 't').replace(/(.)\1+/g, '$1');
+}
+
+function similar(a, b) {
+  if (a === b || canon(a) === canon(b)) return true;
+  const sa = soundKey(a), sb = soundKey(b);
+  if (sa === sb) return true;
+  const n = Math.max(a.length, b.length);
+  const allow = n >= 8 ? 2 : n >= 5 ? 1 : 0;
+  return allow > 0 && (lev(a, b) <= allow || lev(sa, sb) <= allow);
+}
+
+/* ---------- STORY STATE ---------- */
+let tokens = [];       // {text, norm, na, el, state, misses}
+let pos = 0;           // index of the word the child must say next
+let lastNorm = '';
+let finished = false;
+let lastScrolled = -1;
+let currentText = '';
+let missedTok = null;
+let readSeq = 0;       // bumps whenever a page/story changes, so stale timers do nothing
+
+const HINT_TEXT = 'Read out loud. Tap any word to hear it. Tap 🎤 if listening stops.';
+
+function buildStory(text) {
+  currentText = text;
+  const box = $('story');
+  box.innerHTML = '';
+  tokens = [];
+  text.split(/\n{2,}/).forEach(par => {
+    par = par.replace(/[—–]/g, ' — ')
+             .replace(/([A-Za-z])-([A-Za-z])/g, '$1- $2')
+             .replace(/\s+/g, ' ').trim();
+    if (!par) return;
+    const p = document.createElement('p');
+    par.split(' ').forEach(w => {
+      const span = document.createElement('span');
+      span.className = 'w';
+      span.textContent = w;
+      const norm = normalize(w);
+      const t = { text: w, norm, na: !norm, el: span, state: 'pending', misses: 0 };
+      span.addEventListener('click', () => tapWord(t));
+      tokens.push(t);
+      p.appendChild(span);
+      p.appendChild(document.createTextNode(' '));
+    });
+    box.appendChild(p);
+  });
+}
+
+function nextIndex(i) {
+  while (i < tokens.length && tokens[i].na) i++;
+  return i;
+}
+
+function paint() {
+  tokens.forEach((t, i) => {
+    let cls = 'w';
+    if (t.state === 'correct') cls += ' correct';
+    if (t.state === 'skipped') cls += ' skipped';
+    if (i === pos) cls += ' cur';
+    t.el.className = cls;
+  });
+  const realTotal = tokens.filter(t => !t.na).length || 1;
+  const done = tokens.filter(t => !t.na && t.state !== 'pending').length;
+  $('readBar').style.width = Math.round(100 * done / realTotal) + '%';
+  if (pos < tokens.length && pos !== lastScrolled) {
+    lastScrolled = pos;
+    tokens[pos].el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  if (pos >= tokens.length && !finished) {
+    finished = true;
+    const seq = readSeq;
+    setTimeout(() => { if (seq === readSeq) finish(); }, 700);
+  }
+}
+
+function wiggle(t) {
+  t.el.classList.remove('try');
+  void t.el.offsetWidth;
+  t.el.classList.add('try');
+}
+
+/* ---------- TAP TO HEAR ---------- */
+let speaking = false;
+let speakId = 0;
+
+function pickVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const v = speechSynthesis.getVoices();
+  return v.find(x => /Samantha|Ava|Allison|Susan/.test(x.name) && x.lang.startsWith('en')) ||
+         v.find(x => x.lang === 'en-US') || null;
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  const id = ++speakId;
+  speaking = true;
+  stopRec(false);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/[^A-Za-z0-9’'\- ]/g, ''));
+  u.lang = 'en-US'; u.rate = 0.7; u.pitch = 1.05;
+  const v = pickVoice();
+  if (v) u.voice = v;
+  let fin = false;
+  const done = () => {
+    if (fin || id !== speakId) return;
+    fin = true;
+    speaking = false;
+    if (listening) setTimeout(startRec, 300);
+  };
+  u.onend = done; u.onerror = done;
+  setTimeout(done, 4000);
+  speechSynthesis.speak(u);
+}
+
+function primeSpeech() {
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(' ');
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+
+function tapWord(t) {
+  if (t.na) return;
+  stopRec(true);
+  speak(t.text);
+  paint();
+}
+
+/* ---------- LISTENING ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, processed = 0, lastWords = [];
+
+function setMicUI() {
+  $('micBtn').textContent = listening ? '🎤 Listening' : '🎤 Paused';
+  $('micBtn').classList.toggle('off', !listening);
+}
+
+function startRec() {
+  if (!SR || !listening || speaking || rec) return;
+  rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  processed = 0;
+  lastWords = [];
+  rec.onresult = e => {
+    let txt = '';
+    for (let i = 0; i < e.results.length; i++) txt += ' ' + e.results[i][0].transcript;
+    const fin = e.results[e.results.length - 1].isFinal;
+    lastWords = txt.split(/\s+/).map(normalize).filter(Boolean);
+    handleSpoken(lastWords, fin);
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      listening = false;
+      setMicUI();
+      $('hint').textContent = 'Please allow the microphone and speech recognition (Settings → Safari, and turn on Siri & Dictation).';
+    }
+  };
+  rec.onend = () => {
+    rec = null;
+    handleSpoken(lastWords, true);
+    if (listening && !speaking) setTimeout(startRec, 250);
+  };
+  try { rec.start(); } catch (err) { rec = null; }
+}
+
+function stopRec(flush) {
+  if (!rec) return;
+  const r = rec;
+  rec = null;
+  r.onresult = r.onerror = r.onend = null;
+  if (flush) handleSpoken(lastWords, true);
+  try { r.abort(); } catch (e) {}
+}
+
+/* ---------- MATCHING: STAY ON THE WORD UNTIL IT'S CORRECT ---------- */
+function handleSpoken(words, final) {
+  // Instant: accept the expected word as soon as it appears, even in partial results
+  let progressed = true;
+  while (progressed && pos < tokens.length && !speaking) {
+    progressed = false;
+    const t = tokens[pos];
+    for (let i = processed; i < words.length; i++) {
+      const w = words[i];
+      if (FILLER.has(w)) continue;
+      if (similar(w, t.norm)) {
+        t.state = 'correct';
+        t.misses = 0;
+        lastNorm = t.norm;
+        pos = nextIndex(pos + 1);
+        processed = i + 1;
+        progressed = true;
+        break;
+      }
+    }
+  }
+  // Only count wrong tries once the transcript is final (partial words are unreliable)
+  if (final && pos < tokens.length && !speaking) {
+    const t = tokens[pos];
+    for (let i = processed; i < words.length; i++) {
+      const w = words[i];
+      if (FILLER.has(w)) continue;
+      if (lastNorm && similar(w, lastNorm)) continue; // repeated the previous word
+      t.misses++;
+      missedTok = t;
+      if (t.misses >= 3) {
+        t.misses = 0;
+        speak(t.text);
+        break;
+      }
+    }
+  }
+  if (final) processed = words.length;
+  if (!tokens.length) return;
+  paint();
+  if (missedTok && missedTok === tokens[pos]) wiggle(missedTok);
+  missedTok = null;
+}
+
+function startReading(text) {
+  buildStory(text);
+  if (!tokens.some(t => !t.na)) { alert('There are no words to read yet.'); return false; }
+  readSeq++;
+  pos = nextIndex(0);
+  lastNorm = '';
+  finished = false;
+  lastScrolled = -1;
+  missedTok = null;
+  show('read');
+  primeSpeech();
+  listening = !!SR;
+  $('hint').textContent = SR ? HINT_TEXT : 'Listening isn’t supported in this browser, but you can still tap words to hear them. Try Safari on iPhone/iPad.';
+  setMicUI();
+  paint();
+  startRec();
+  return true;
+}
+
+// UI for a photo or random story (no book, no pages)
+function freeReadUI() {
+  reading = null;
+  setReadAlongUI(true);
+  $('pageInfo').hidden = true;
+  $('pageNav').hidden = true;
+}
+
+// Show or hide the read-along controls on the reading screen
+function setReadAlongUI(on) {
+  $('micBtn').hidden = !on;
+  $('skipBtn').hidden = !on;
+  $('restartBtn').hidden = !on;
+  $('hint').hidden = !on;
+}
+
+$('startBtn').onclick = () => {
+  const text = $('storyText').value.trim();
+  if (!text) return;
+  freeReadUI();
+  startReading(text);
+};
+
+$('micBtn').onclick = () => {
+  if (!SR) return;
+  listening = !listening;
+  setMicUI();
+  if (listening) startRec(); else stopRec(true);
+};
+
+$('skipBtn').onclick = () => {
+  if (pos >= tokens.length) return;
+  const t = tokens[pos];
+  t.state = 'skipped';
+  t.misses = 0;
+  lastNorm = t.norm;
+  pos = nextIndex(pos + 1);
+  processed = lastWords.length; // ignore anything heard before the skip
+  paint();
+};
+
+$('restartBtn').onclick = () => { stopAll(); startReading(currentText); };
+$('exitBtn').onclick = () => {
+  stopAll();
+  if (reading) backToChapters(); else show('capture');
+};
+
+function stopAll() {
+  readSeq++;
+  listening = false;
+  stopRec(false);
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  speaking = false;
+}
+
+function finish() {
+  stopAll();
+  if (reading) { nextPage(); return; }
+  $('doneTitle').textContent = 'Great reading!';
+  $('againBtn').hidden = false;
+  $('newBtn').hidden = false;
+  $('nextChBtn').hidden = true;
+  $('chaptersBtn').hidden = true;
+  show('done');
+}
+
+$('againBtn').onclick = () => { freeReadUI(); startReading(currentText); };
+$('newBtn').onclick = () => show('capture');
+
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => pickVoice();
+
+/* ---------- BOOKSHELF ---------- */
+let shelfBook = null;   // { cfg, chapters: [{ num, title, pages: [[paragraph, ...], ...] }] }
+let reading = null;     // { num, page } while reading a book page
+let bookmark = null;    // { chapter, page, t, dirty }
+let doneNext = 0;       // chapter number offered on the "chapter done" screen
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+function showShelf() {
+  const box = $('shelfList');
+  box.innerHTML = '';
+  BOOKS.forEach(cfg => {
+    const b = document.createElement('button');
+    b.className = 'btn alt';
+    b.textContent = (cfg.emoji ? cfg.emoji + ' ' : '') + cfg.title;
+    b.onclick = () => openBook(cfg);
+    box.appendChild(b);
+  });
+  show('shelf');
+}
+
+// Everything above the last "# Title" line is ignored (story brief, notes).
+// Chapters start at "## Chapter N: Title".
+function parseBook(md) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  let start = 0;
+  lines.forEach((l, i) => { if (/^#\s/.test(l)) start = i + 1; });
+  const chapters = [];
+  let cur = null;
+  for (let i = start; i < lines.length; i++) {
+    const m = lines[i].match(/^##\s*Chapter\s+(\d+)\s*[:.\-–—]?\s*(.*)$/i);
+    if (m) { cur = { num: +m[1], title: m[2].trim(), body: [] }; chapters.push(cur); continue; }
+    if (cur) cur.body.push(lines[i]);
+  }
+  chapters.forEach(c => { c.pages = paginate(c.body.join('\n')); delete c.body; });
+  return chapters.filter(c => c.pages.length).sort((a, b) => a.num - b.num);
+}
+
+function toParagraphs(text) {
+  return text.split(/\n\s*\n/)
+    .map(p => p.replace(/\n/g, ' ').replace(/[*_]+/g, '').replace(/\s+/g, ' ').trim())
+    .filter(p => p && !/^-{3,}$/.test(p));
+}
+
+// ~200-word pages, never splitting a paragraph. Split by word count (not screen size)
+// so page numbers match on every device.
+function paginate(text) {
+  const pages = [];
+  let cur = [], n = 0;
+  toParagraphs(text).forEach(p => {
+    const w = p.split(' ').length;
+    if (n > 0 && n + w > PAGE_WORDS * 1.25) { pages.push(cur); cur = []; n = 0; }
+    cur.push(p);
+    n += w;
+    if (n >= PAGE_WORDS) { pages.push(cur); cur = []; n = 0; }
+  });
+  if (cur.length) {
+    if (pages.length && n < PAGE_WORDS * 0.3) pages[pages.length - 1] = pages[pages.length - 1].concat(cur);
+    else pages.push(cur);
+  }
+  return pages;
+}
+
+const findCh = num => shelfBook && shelfBook.chapters.find(c => c.num === num);
+
+async function openBook(cfg) {
+  shelfBook = null;
+  $('chTitle').textContent = (cfg.emoji ? cfg.emoji + ' ' : '') + cfg.title;
+  $('chList').innerHTML = '';
+  $('continueBtn').hidden = true;
+  $('bookMsg').textContent = 'Loading…';
+  $('bookMsg').hidden = false;
+  show('chapters');
+  try {
+    const res = await fetch(cfg.file, { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const chapters = parseBook(await res.text());
+    if (!chapters.length) throw new Error('No chapters found in ' + cfg.file);
+    shelfBook = { cfg, chapters };
+  } catch (err) {
+    $('bookMsg').textContent = 'Could not load the book: ' + err.message;
+    return;
+  }
+  $('bookMsg').hidden = true;
+  bookmark = lsGet(bmKey(cfg.id));
+  renderChapters();
+  syncBookmark();
+}
+
+function renderChapters() {
+  if (!shelfBook) return;
+  const list = $('chList');
+  list.innerHTML = '';
+  const total = Math.max(shelfBook.cfg.chapters || 0, ...shelfBook.chapters.map(c => c.num));
+  for (let n = 1; n <= total; n++) {
+    const ch = findCh(n);
+    const b = document.createElement('button');
+    b.className = 'chap';
+    if (ch) {
+      let html = '<span><b>' + n + '.</b> ' + esc(ch.title) + '</span>';
+      if (bookmark && bookmark.chapter === n) html += '<span class="here">📍 page ' + Math.min(bookmark.page, ch.pages.length) + '</span>';
+      b.innerHTML = html;
+      b.onclick = () => openPage(n, 1);
+    } else {
+      b.innerHTML = '<span><b>' + n + '.</b> Coming soon</span>';
+      b.disabled = true;
+    }
+    list.appendChild(b);
+  }
+  renderContinue();
+}
+
+function renderContinue() {
+  const btn = $('continueBtn');
+  if (!bookmark) { btn.hidden = true; return; }
+  btn.hidden = false;
+  const ch = findCh(bookmark.chapter);
+  if (ch) {
+    const pg = Math.min(bookmark.page, ch.pages.length);
+    btn.disabled = false;
+    btn.innerHTML = '▶️ Continue<small>Chapter ' + ch.num + ': ' + esc(ch.title) + ' · page ' + pg + ' of ' + ch.pages.length + '</small>';
+    btn.onclick = () => openPage(ch.num, pg);
+  } else {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Chapter ' + bookmark.chapter + ' is coming soon';
+    btn.onclick = null;
+  }
+}
+
+function readAlongOn() {
+  const v = lsGet('ra_readalong');
+  return v === null ? true : !!v;
+}
+function updateRaLabel() {
+  $('raLabel').textContent = 'Read Along: ' + ($('raToggle').checked ? 'On' : 'Off');
+}
+$('raToggle').checked = readAlongOn();
+updateRaLabel();
+$('raToggle').onchange = () => { lsSet('ra_readalong', $('raToggle').checked); updateRaLabel(); };
+
+function openPage(num, page) {
+  const ch = findCh(num);
+  if (!ch) return;
+  page = Math.max(1, Math.min(page, ch.pages.length));
+  stopAll();
+  reading = { num, page };
+  saveBookmark(num, page);
+  const text = ch.pages[page - 1].join('\n\n');
+  $('pageInfo').textContent = 'Chapter ' + num + ': ' + ch.title + ' · Page ' + page + ' of ' + ch.pages.length;
+  $('pageInfo').hidden = false;
+  $('pageNav').hidden = false;
+  $('prevBtn').disabled = page === 1;
+  $('nextBtn').textContent = page === ch.pages.length ? 'Finish ✓' : 'Next ▶';
+  if (readAlongOn()) {
+    setReadAlongUI(true);
+    startReading(text);
+  } else {
+    setReadAlongUI(false);
+    renderPlain(text, page / ch.pages.length);
+    show('read');
+  }
+}
+
+// Parent mode: plain text, no mic, no highlighting, no tap-to-hear
+function renderPlain(text, progress) {
+  currentText = text;
+  tokens = [];
+  const box = $('story');
+  box.innerHTML = '';
+  text.split(/\n{2,}/).forEach(par => {
+    const p = document.createElement('p');
+    p.textContent = par;
+    box.appendChild(p);
+  });
+  $('readBar').style.width = Math.round(100 * progress) + '%';
+}
+
+function nextPage() {
+  if (!reading) return;
+  const ch = findCh(reading.num);
+  if (ch && reading.page < ch.pages.length) openPage(reading.num, reading.page + 1);
+  else chapterDone();
+}
+
+function chapterDone() {
+  stopAll();
+  const num = reading.num;
+  const total = Math.max(shelfBook.cfg.chapters || 0, ...shelfBook.chapters.map(c => c.num));
+  const next = findCh(num + 1);
+  if (num >= total && !next) {
+    saveBookmark(1, 1);
+    $('doneTitle').textContent = 'The End! You finished the book!';
+  } else {
+    saveBookmark(num + 1, 1);
+    $('doneTitle').textContent = 'Chapter ' + num + ' done!';
+  }
+  doneNext = next ? next.num : 0;
+  $('nextChBtn').hidden = !next;
+  if (next) $('nextChBtn').textContent = '▶️ Chapter ' + next.num + ': ' + next.title;
+  $('againBtn').hidden = true;
+  $('newBtn').hidden = true;
+  $('chaptersBtn').hidden = false;
+  show('done');
+}
+
+function backToChapters() {
+  stopAll();
+  reading = null;
+  if (!shelfBook) { showShelf(); return; }
+  renderChapters();
+  show('chapters');
+  syncBookmark();
+}
+
+$('prevBtn').onclick = () => { if (reading && reading.page > 1) openPage(reading.num, reading.page - 1); };
+$('nextBtn').onclick = () => { stopAll(); nextPage(); };
+$('nextChBtn').onclick = () => { if (doneNext) openPage(doneNext, 1); };
+$('chaptersBtn').onclick = backToChapters;
+$('shelfBtn').onclick = showShelf;
+$('shelfBackBtn').onclick = () => show('capture');
+$('chBackBtn').onclick = showShelf;
+
+/* ---------- SHARED BOOKMARK (Supabase + device copy) ---------- */
+const bmKey = id => 'ra_bm_' + id;
+const dbReady = () => /^https:\/\//.test(SUPABASE_URL) && SUPABASE_URL.indexOf('YOUR-') < 0 && SUPABASE_KEY.indexOf('YOUR-') < 0;
+
+function dbHeaders(extra) {
+  const h = { apikey: SUPABASE_KEY };
+  if (SUPABASE_KEY.indexOf('eyJ') === 0) h.Authorization = 'Bearer ' + SUPABASE_KEY; // legacy anon key
+  return Object.assign(h, extra || {});
+}
+
+function saveBookmark(chapter, page) {
+  if (!shelfBook) return;
+  const id = shelfBook.cfg.id;
+  bookmark = { chapter, page, t: Date.now(), dirty: true };
+  lsSet(bmKey(id), bookmark);
+  pushBookmark(id, bookmark);
+}
+
+async function pushBookmark(id, bm) {
+  if (!dbReady()) return;
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/story_bookmarks?on_conflict=book_id', {
+      method: 'POST',
+      headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ book_id: id, chapter: bm.chapter, page: bm.page, updated_at: new Date(bm.t).toISOString() })
+    });
+    if (r.ok) {
+      const cur = lsGet(bmKey(id));
+      if (cur && cur.t === bm.t) { cur.dirty = false; lsSet(bmKey(id), cur); }
+    }
+  } catch (e) { /* offline: device copy stays dirty and is pushed next time */ }
+}
+
+async function syncBookmark() {
+  if (!shelfBook || !dbReady()) return;
+  const id = shelfBook.cfg.id;
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/story_bookmarks?select=chapter,page,updated_at&book_id=eq.' + encodeURIComponent(id), {
+      headers: dbHeaders(), cache: 'no-store'
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!shelfBook || shelfBook.cfg.id !== id) return;
+    const local = lsGet(bmKey(id));
+    const remote = rows[0] ? { chapter: rows[0].chapter, page: rows[0].page, t: Date.parse(rows[0].updated_at), dirty: false } : null;
+    if (local && local.dirty && (!remote || local.t > remote.t)) { pushBookmark(id, local); return; }
+    if (remote) {
+      bookmark = remote;
+      lsSet(bmKey(id), remote);
+      if ($('s-chapters').classList.contains('active')) renderChapters();
+    }
+  } catch (e) {}
+}
+
+// Pick up page turns made on another device when this one wakes up
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && $('s-chapters').classList.contains('active')) syncBookmark();
+});
+</script>
+</body>
+</html>
